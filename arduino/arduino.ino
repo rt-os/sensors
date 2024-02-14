@@ -22,13 +22,20 @@ void loop() {
         previousMillis = currentMillis;  // Update the last time you performed this action
         int readings[8];
         sensors.getReadings(readings);
+        Serial.println();
         for (int i = 0; i < 8; i++) {
             if (readings[i] != -1) {  // Check if the sensor is online
-                Serial.print(currentMillis);
-                Serial.print(" D");
+                Serial.print("\t");
+                Serial.print("D");
                 Serial.print(i);
                 Serial.print(" (mm): ");
-                Serial.println(readings[i]);
+                Serial.print(readings[i]);
+            } else {
+                Serial.print("\t");
+                Serial.print("D");
+                Serial.print(i);
+                Serial.print(" (mm): ");
+                Serial.print("null");
             }
         }
     }

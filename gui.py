@@ -202,7 +202,7 @@ def serial_reader(ser):
                 # App.outputlbl.configure(text=App.outputlbl._text+"\n"+fn+" Opened")
                 # logger.info(f"starting: {fn}")
                 writer = csv.writer(log_file)
-                writer.writerow(['milliseconds (PST)', 'Sensor Number', 'Measurement'])
+                writer.writerow(['Timestamp (PST)', 'Sensor Number', 'Measurement'])
         else:
             if logging_running:
                 logging_running = False
@@ -215,7 +215,8 @@ def serial_reader(ser):
         try:
             line = ser.readline().decode('utf-8').strip()
             matches = re.findall(pattern, line)
-            timestamp = int(time.time() * 1000)
+            utc_now = datetime.fromtimestamp(time.time(), pytz.utc)
+            timestamp = int(utc_now.astimezone(pytz.timezone('US/Pacific')).timestamp() * 1000)
             for hit in matches:
                 # logger.debug("Index:", hit[0], "Measurement:", hit[1])
                 sensor_id = int(hit[0])
@@ -241,4 +242,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -60,40 +60,11 @@ def log_sensor_readings(ser, duration, csv_filename):
                         if 0 <= sensor_id < len(sensor_data):
                             capture_data(sensor_id, data_value)
                             writer.writerow([timestamp, sensor_id, data_value])
-                    # if match:
-                    #     arduino_millis, sensor, reading = int(match.group(1)), match.group(2), int(match.group(3))
-                    #     readings[sensor] = min(readings.get(sensor, float('inf')), reading)
 
-                    #     # Set first reading time as base time
-                    #     if first_reading_time is None:
-                    #         first_reading_time = datetime.now(pst_timezone) - timedelta(milliseconds=arduino_millis)
-
-                    #     # Calculate the actual timestamp
-                    #     actual_timestamp = first_reading_time + timedelta(milliseconds=arduino_millis)
-                    #     timestamp = actual_timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # Truncate microseconds to milliseconds
-
-                    #     writer.writerow([timestamp, sensor, reading])
             except Exception as e:
                 print(f"Error: {e}")
 
     return readings
-
-        # try:
-        #     line = ser.readline().decode('utf-8').strip()
-        #     matches = re.findall(pattern, line)
-        #     timestamp = int(time.time() * 1000)
-        #     for hit in matches:
-        #         # logger.debug("Index:", hit[0], "Measurement:", hit[1])
-        #         sensor_id = int(hit[0])
-        #         data_value = int(hit[1])
-        #         if 0 <= sensor_id < len(sensor_data):
-        #             capture_data(sensor_id, data_value)
-        #             if logging_running:
-        #                 writer.writerow([timestamp, sensor_id, data_value])
-        # except UnicodeDecodeError:
-        #     print("Error decoding byte sequence from serial port")
-
-
 
 def main():
     port = find_arduino_port()
@@ -101,7 +72,7 @@ def main():
         print("Arduino not found. Please check your connection.")
         return
 
-    duration = 5
+    duration = 1
     if len(sys.argv) > 1:
         try:
             duration = int(sys.argv[1])

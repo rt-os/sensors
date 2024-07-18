@@ -30,7 +30,7 @@ from serial.tools import list_ports
 def find_arduino_port():
     ports = list(list_ports.comports())
     for port in ports:
-        if "CH340" in port.description or "CP210x" in port.description:
+        if "CH340" in port.description or "CP210x" in port.description or "USB" in port.description:
             return port.device
     return None
 def mm_to_inches(lengths):
@@ -166,7 +166,8 @@ class App(customtkinter.CTk):
         pst = datetime.now(pytz.timezone('America/Los_Angeles'))
         time = pst.strftime("%Y%m%d_%H%M%S")
         FILE_PREFIX = self.side_frame.site.get() + self.side_frame.optionmenu.get() + "_"
-        FILE_COMMENT = self.side_frame.comment.get()
+        FILE_PREFIX = FILE_PREFIX.strip()
+        FILE_COMMENT = self.side_frame.comment.get().strip()
         if not LOGGING:
             self.outputlbl.configure(text=self.outputlbl._text+"\n"+FILE_PREFIX + time + "_" + FILE_COMMENT + " opened")
         else:

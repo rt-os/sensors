@@ -219,11 +219,11 @@ class App(customtkinter.CTk):
 
         # Create outputlbl on the right, occupying all expandable space
         self.outputlbl = customtkinter.CTkLabel(self, text="Sequence will be displayed here", fg_color="dimgray", corner_radius=10)
-        self.outputlbl.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")  # Expand in all directions
+        self.outputlbl.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")  # Expand in all directions
 
         # Create sensorBar below outputlbl
         self.sensor_bar = sensorBar(self)
-        self.sensor_bar.grid(row=1, column=1, padx=10, pady=10, sticky="ew")  # Expand horizontally
+        self.sensor_bar.grid(row=1, column=1, columnspan=2, padx=10, pady=10, sticky="ew")  # Expand horizontally
 
     def update_sequence_display(self):
         """Updates the sequence display with the current sequence steps."""

@@ -38,3 +38,8 @@ pip-delete-this-directory.txt
 
 # sensors project
 310/
+test.py
+*.csv #recordings should not be comitted
+
+#Mac issues
+.DS_Store

@@ -7,11 +7,14 @@ import os
 import warnings
 from fractions import Fraction
 
+right_side_sensors = [0, 1]
+left_side_sensors = [2, 3]
+ 
 calibration_map = {
-    0: -1,  #MM of adjustment
-    1: -15,  
-    2: -6,
-    3: 0,
+    0: -1,  #MM of adjustment negivite brings it closer to the cart
+    1: -1,  
+    2: -1,
+    3: -1,
 }
 
 # Suppress specific FutureWarnings from Seaborn, if desired
@@ -151,10 +154,7 @@ def process_directory(directory):
                 file_path = os.path.join(root, file)
                 try:
                     closest_readings, closest_times = process_and_plot(file_path)
-                    
-                    right_side_sensors = [0, 1]
-                    left_side_sensors = [2, 3]
-                    
+                                       
                     # Find the lowest reading on the right side
                     right_side_readings = closest_readings[right_side_sensors]
                     lowest_right_sensor = right_side_readings.idxmin()

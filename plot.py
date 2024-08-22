@@ -7,6 +7,13 @@ import os
 import warnings
 from fractions import Fraction
 
+calibration_map = {
+    0: -1,  #MM of adjustment
+    1: -15,  
+    2: -6,
+    3: 0,
+}
+
 # Suppress specific FutureWarnings from Seaborn, if desired
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -27,6 +34,11 @@ plt.rcParams.update({
     'savefig.facecolor': '#272822',
     'savefig.edgecolor': '#272822',
 })
+def apply_calibration(measurement, sensor_id, calibration_map):
+    """Apply the calibration based on the sensor ID."""
+    calibration_value = calibration_map.get(sensor_id, 0)  # Default to 0 if no calibration value is found
+    return measurement + calibration_value
+
 
 def mm_to_inches(mm):
     inches = mm / 25.4
@@ -72,7 +84,8 @@ def process_and_plot(csv_file):
     else:
         df['Timestamp (PST)'] = pd.to_datetime(df['Timestamp (PST)'])
     
-    df['Measurement'] = df['Measurement'].apply(mm_to_inches)
+    # Apply calibration and convert to inches
+    df['Measurement'] = df.apply(lambda row: mm_to_inches(apply_calibration(row['Measurement'], row['Sensor Number'], calibration_map)), axis=1)
 
     start_time = df['Timestamp (PST)'].min()
     end_time = df['Timestamp (PST)'].max()
@@ -138,8 +151,28 @@ def process_directory(directory):
                 file_path = os.path.join(root, file)
                 try:
                     closest_readings, closest_times = process_and_plot(file_path)
-                    for sensor, reading in closest_readings.items():
-                        print(f"File: {file_path} - Sensor {sensor} - Closest Reading: {reading} inches at {closest_times[sensor]}")
+                    
+                    right_side_sensors = [0, 1]
+                    left_side_sensors = [2, 3]
+                    
+                    # Find the lowest reading on the right side
+                    right_side_readings = closest_readings[right_side_sensors]
+                    lowest_right_sensor = right_side_readings.idxmin()
+                    lowest_right_reading = right_side_readings.min()
+                    lowest_right_time = closest_times[lowest_right_sensor]
+                    
+                    # Find the lowest reading on the left side
+                    left_side_readings = closest_readings[left_side_sensors]
+                    lowest_left_sensor = left_side_readings.idxmin()
+                    lowest_left_reading = left_side_readings.min()
+                    lowest_left_time = closest_times[lowest_left_sensor]
+                    
+                    # Extract the part of the filename after the last underscore
+                    short_filename = file_path.split('_')[-1]
+                    
+                    print(f"{short_filename} - Right Side Lowest: Sensor {lowest_right_sensor} - Reading: {lowest_right_reading} inches ")
+                    print(f"{short_filename} - Left Side Lowest: Sensor {lowest_left_sensor} - Reading: {lowest_left_reading} inches ")
+                    
                 except Exception as e:
                     print(f"Failed to process {file_path}: {e}")
 

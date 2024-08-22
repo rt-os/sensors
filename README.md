@@ -5,6 +5,7 @@
 * then run: "python gui.py" or "python3 gather.py" to create the CSV
 * run python or python3 plot.py <csv file> to produce the graph of that time
 ## setup Mac ##
+* you may need to install brew manualy before you start: see instructions at https://brew.sh/
 * first run the setuppython.sh this will enable a virtual env with python 3.10 and most of the needed libraries
 * After first time from this folder run pyenv activate 310
 * then run: "python gui.py" to create the CSV

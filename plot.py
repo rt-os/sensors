@@ -5,17 +5,22 @@ import seaborn as sns
 import argparse
 import os
 import warnings
+import json
 from fractions import Fraction
 
-right_side_sensors = [0, 1]
-left_side_sensors = [2, 3]
- 
-calibration_map = {
-    0: -1,  #MM of adjustment negivite brings it closer to the cart
-    1: -1,  
-    2: -1,
-    3: -1,
-}
+# Load configuration from JSON file
+def load_config(config_file='config.json'):
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    return config
+
+# Load the configuration
+config = load_config()
+
+# Extract configuration settings
+right_side_sensors = config['right_side_sensors']
+left_side_sensors = config['left_side_sensors']
+calibration_map = {int(k): v for k, v in config['calibration_map'].items()}  # Convert keys to integers
 
 # Suppress specific FutureWarnings from Seaborn, if desired
 warnings.simplefilter(action='ignore', category=FutureWarning)

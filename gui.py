@@ -49,17 +49,18 @@ class sensorBar(customtkinter.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
-        self.sl0 = customtkinter.CTkLabel(self, text="1:", padx=5)
+        self.display_in_inches = False  # Flag to track the display unit
+        self.sl0 = customtkinter.CTkLabel(self, text="0:", padx=5)
         self.sv0 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl1 = customtkinter.CTkLabel(self, text="2:", padx=5)
+        self.sl1 = customtkinter.CTkLabel(self, text="1:", padx=5)
         self.sv1 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl2 = customtkinter.CTkLabel(self, text="3:", padx=5)
+        self.sl2 = customtkinter.CTkLabel(self, text="2:", padx=5)
         self.sv2 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl3 = customtkinter.CTkLabel(self, text="4:", padx=5)
+        self.sl3 = customtkinter.CTkLabel(self, text="3:", padx=5)
         self.sv3 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl4 = customtkinter.CTkLabel(self, text="5:", padx=5)
+        self.sl4 = customtkinter.CTkLabel(self, text="4:", padx=5)
         self.sv4 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl5 = customtkinter.CTkLabel(self, text="6:", padx=5)
+        self.sl5 = customtkinter.CTkLabel(self, text="5:", padx=5)
         self.sv5 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
 
         self.sl0.grid(row=0, column=0, padx=2, pady=3, sticky="w")
@@ -74,21 +75,41 @@ class sensorBar(customtkinter.CTkFrame):
         self.sv4.grid(row=0, column=9, padx=2, pady=3, sticky="w")
         self.sl5.grid(row=0, column=10, padx=2, pady=3, sticky="w")
         self.sv5.grid(row=0, column=11, padx=2, pady=3, sticky="w")
+
+        # Bind click event to toggle conversion
+        self.sv0.bind("<Button-1>", self.toggle_conversion)
+        self.sv1.bind("<Button-1>", self.toggle_conversion)
+        self.sv2.bind("<Button-1>", self.toggle_conversion)
+        self.sv3.bind("<Button-1>", self.toggle_conversion)
+        self.sv4.bind("<Button-1>", self.toggle_conversion)
+        self.sv5.bind("<Button-1>", self.toggle_conversion)
+
         self.timer_callback()
 
-    def timer_callback(self):
+    def toggle_conversion(self, event=None):
+        self.display_in_inches = not self.display_in_inches  # Toggle the flag
+        self.update_display()
+
+    def update_display(self):
         global sensor_data
-        self.sv0.configure(text=str(sensor_data[0][0]) + "mm")
-        self.sv1.configure(text=str(sensor_data[1][0]) + "mm")
-        self.sv2.configure(text=str(sensor_data[2][0]) + "mm")
-        self.sv3.configure(text=str(sensor_data[3][0]) + "mm")
-        self.sv4.configure(text=str(sensor_data[4][0]) + "mm")
-        self.sv5.configure(text=str(sensor_data[5][0]) + "mm")
-        self.after(1000, self.timer_callback)
+
+        # Convert and update labels based on the current unit
+        if self.display_in_inches:
+            converted_data = mm_to_inches([sensor_data[i][0] for i in range(NUM_SENSORS)])
+            for i, label in enumerate([self.sv0, self.sv1, self.sv2, self.sv3, self.sv4, self.sv5]):
+                label.configure(text=f"{converted_data[i]:.2f} in")
+        else:
+            for i, label in enumerate([self.sv0, self.sv1, self.sv2, self.sv3, self.sv4, self.sv5]):
+                label.configure(text=f"{sensor_data[i][0]} mm")
+
+    def timer_callback(self):
+        self.update_display()  # Update display with current unit
+        self.after(1000, self.timer_callback)  # Call this method every second
 
 class SideFrame(customtkinter.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
+        self.master = master  # Store reference to the parent App instance
 
         self.sitelbl = customtkinter.CTkLabel(self, text="Site:")
         self.site = customtkinter.CTkEntry(self, placeholder_text="Site")
@@ -116,6 +137,7 @@ class SideFrame(customtkinter.CTkFrame):
         self.comment.grid(row=10, column=0, padx=10, pady=(2, 0), sticky="w")
         self.start_stop_btn.grid(row=11, column=0, padx=10, pady=(10, 0), sticky="w")
 
+
     def set_sequence(self):
         global SEQUENCE
 
@@ -139,17 +161,19 @@ class SideFrame(customtkinter.CTkFrame):
         # Reversing if Zone is A or D
         if zone in ["A", "D"]:
             if type_selected == "MDF-DH":
-                SEQUENCE.append(f"DH-{zone}")
-                SEQUENCE.append(f"MDF-{zone}")
+                SEQUENCE.append(f"DH-{zone}-exit")
+                SEQUENCE.append(f"MDF-{zone}-exit")
             else:
-                SEQUENCE.append(f"DH-{zone}")
+                SEQUENCE.append(f"DH-{zone}-exit")
 
         # Adding doors in descending order
         for i in range(doors, 0, -1):
             SEQUENCE.append(f"Door {i}")
 
         # Update the output label with the sequence
-        master.outputlbl.configure(text=" -> ".join(SEQUENCE))
+        self.master.outputlbl.configure(text=" -> ".join(SEQUENCE))
+        # Update the sequence display
+        self.master.update_sequence_display()
 
     def start_stop(self):
         global LOGGING, SEQUENCE, FILE_COMMENT, FILE_PREFIX
@@ -158,15 +182,18 @@ class SideFrame(customtkinter.CTkFrame):
             if SEQUENCE:
                 # Pop the first element from the sequence
                 FILE_COMMENT = SEQUENCE.pop(0)
-                FILE_PREFIX = self.site.get()
+                FILE_PREFIX = self.site.get().strip() + "_" + FILE_COMMENT
                 LOGGING = True
                 self.start_stop_btn.configure(text="Stop")
             else:
-                master.outputlbl.configure(text="No sequence left to process.")
+                self.master.outputlbl.configure(text="No sequence left to process.")  # Use self.master here
         else:
             LOGGING = False
             self.start_stop_btn.configure(text="Start")
-            master.outputlbl.configure(text="Logging stopped. Remaining sequence: " + " -> ".join(SEQUENCE))
+            self.master.outputlbl.configure(text="Logging stopped. Remaining sequence: " + " -> ".join(SEQUENCE))
+        # Update the sequence display
+        self.master.update_sequence_display()
+
 
 class App(customtkinter.CTk):
     def __init__(self):
@@ -174,27 +201,56 @@ class App(customtkinter.CTk):
 
         self.title("Sensor Logging System")
         self.geometry(f"{WIDTH}x{HEIGHT}")
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
 
+        # Configure grid for the main window
+        self.grid_rowconfigure(0, weight=1)  # Expand outputlbl vertically
+        self.grid_rowconfigure(1, weight=0)  # No vertical expansion for sensorBar
+        self.grid_columnconfigure(0, weight=0)  # No horizontal expansion for side_frame
+        self.grid_columnconfigure(1, weight=0)  # No horizontal expansion for sequence_label
+        self.grid_columnconfigure(2, weight=1)  # Expand outputlbl horizontally
+
+        # Create SideFrame on the left
         self.side_frame = SideFrame(self)
-        self.side_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ns")
+        self.side_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=10, sticky="ns")
 
+        # Create sequence_label for the sequence in the middle
+        self.sequence_label = customtkinter.CTkLabel(self, text="Sequence", justify="left", fg_color="slategrey", corner_radius=10, anchor="w")
+        self.sequence_label.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
+        # Create outputlbl on the right, occupying all expandable space
+        self.outputlbl = customtkinter.CTkLabel(self, text="Sequence will be displayed here", fg_color="dimgray", corner_radius=10)
+        self.outputlbl.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")  # Expand in all directions
+
+        # Create sensorBar below outputlbl
         self.sensor_bar = sensorBar(self)
-        self.sensor_bar.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        self.sensor_bar.grid(row=1, column=1, padx=10, pady=10, sticky="ew")  # Expand horizontally
 
-        self.outputlbl = customtkinter.CTkLabel(self, text="Sequence will be displayed here", fg_color="lightgrey", corner_radius=10, width=600, height=50)
-        self.outputlbl.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+    def update_sequence_display(self):
+        """Updates the sequence display with the current sequence steps."""
+        global SEQUENCE, FILE_COMMENT, LOGGING
+
+        # Prepare text for sequence_label
+        sequence_text = ""
+        for step in SEQUENCE:
+            if LOGGING and step == FILE_COMMENT:
+                # Highlight the current step if logging is active
+                sequence_text += f"**{step}**\n"
+            else:
+                sequence_text += f"{step}\n"
+
+        # Update the sequence label text
+        self.sequence_label.configure(text=sequence_text)
+
 
 def capture_data(sensor_id, value):
     sensor_data[sensor_id].append(value)
     mindist[sensor_id] = min(mindist[sensor_id], value)
 
 def gen_file_name(type):
-    global FILE_PREFIX, FILE_COMMENT
+    global FILE_PREFIX
     pst = datetime.now(pytz.timezone('America/Los_Angeles'))
     fn = pst.strftime("%Y%m%d_%H%M%S")
-    return FILE_PREFIX + fn + "_" + FILE_COMMENT + ".csv"
+    return fn + FILE_PREFIX + ".csv"
 
 def serial_reader(ser):
     global sensor_data, LOGGING, FILE_PREFIX

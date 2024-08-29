@@ -158,46 +158,50 @@ def process_and_plot(csv_file):
     return closest_readings, closest_times
 
 def process_directory(directory):
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.csv'):
-                file_path = os.path.join(root, file)
-                try:
-                    closest_readings, closest_times = process_and_plot(file_path)
-                    
-                    # If there are no readings, skip to the next file
-                    if closest_readings is None or closest_times is None:
-                        continue
+    # Define the output CSV file path
+    output_file = os.path.join(directory, 'lowest_readings.csv')
 
-                    # Filter sensors that are in the current dataset
-                    active_sensors = closest_readings.index
+    # Open the output file in write mode
+    with open(output_file, 'w') as f_out:
+        for root, _, files in os.walk(directory):
+            for file in files:
+                if file.endswith('.csv'):
+                    file_path = os.path.join(root, file)
+                    try:
+                        closest_readings, closest_times = process_and_plot(file_path)
 
-                    # Filter right and left side sensors based on active sensors in the dataset
-                    active_right_side_sensors = [sensor for sensor in right_side_sensors if sensor in active_sensors]
-                    active_left_side_sensors = [sensor for sensor in left_side_sensors if sensor in active_sensors]
+                        # If there are no readings, skip to the next file
+                        if closest_readings is None or closest_times is None:
+                            continue
 
-                    if not active_right_side_sensors:
-                        print(f"No active right side sensors found in {file_path}")
-                    else:
-                        # Find the lowest reading on the right side
-                        right_side_readings = closest_readings[active_right_side_sensors]
-                        lowest_right_sensor = right_side_readings.idxmin()
-                        lowest_right_reading = right_side_readings.min()
-                        lowest_right_time = closest_times[lowest_right_sensor]
-                        print(f"{file} - Right Side Lowest: Sensor {lowest_right_sensor} - Reading: {lowest_right_reading}\"")
+                        # Filter sensors that are in the current dataset
+                        active_sensors = closest_readings.index
 
-                    if not active_left_side_sensors:
-                        print(f"No active left side sensors found in {file_path}")
-                    else:
-                        # Find the lowest reading on the left side
-                        left_side_readings = closest_readings[active_left_side_sensors]
-                        lowest_left_sensor = left_side_readings.idxmin()
-                        lowest_left_reading = left_side_readings.min()
-                        lowest_left_time = closest_times[lowest_left_sensor]
-                        print(f"{file} - Left Side Lowest: Sensor {lowest_left_sensor} - Reading: {lowest_left_reading}\"")
+                        # Filter right and left side sensors based on active sensors in the dataset
+                        active_right_side_sensors = [sensor for sensor in right_side_sensors if sensor in active_sensors]
+                        active_left_side_sensors = [sensor for sensor in left_side_sensors if sensor in active_sensors]
 
-                except Exception as e:
-                    print(f"Failed to process {file_path}: {e}")
+                        # Initialize the lowest readings as None
+                        lowest_left_reading = None
+                        lowest_right_reading = None
+
+                        # Check for left side sensors
+                        if active_left_side_sensors:
+                            # Find the lowest reading on the left side
+                            left_side_readings = closest_readings[active_left_side_sensors]
+                            lowest_left_reading = left_side_readings.min()
+
+                        # Check for right side sensors
+                        if active_right_side_sensors:
+                            # Find the lowest reading on the right side
+                            right_side_readings = closest_readings[active_right_side_sensors]
+                            lowest_right_reading = right_side_readings.min()
+
+                        # Write the results to the output CSV file
+                        f_out.write(f"{file},{lowest_left_reading if lowest_left_reading is not None else ''},{lowest_right_reading if lowest_right_reading is not None else ''}\n")
+
+                    except Exception as e:
+                        print(f"Failed to process {file_path}: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='Process a CSV file or directory of CSV files to plot sensor measurements.')

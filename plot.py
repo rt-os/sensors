@@ -8,13 +8,10 @@ import os
 import warnings
 from fractions import Fraction
 
-# Load configuration from YAML file
 def load_config(config_file='config.yaml'):
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
     return config
-
-# Load the configuration
 config = load_config()
 
 # Extract configuration settings from YAML
@@ -63,7 +60,7 @@ def determine_grouping_frequency(start_time, end_time):
     desired_intervals = min(max(duration_seconds // 5, 5), 20)
 
     frequency_seconds = duration_seconds / desired_intervals
-
+    return '0.1S'
     if frequency_seconds < 1:
         return '1S'  # Minimum frequency is 1 second
     elif frequency_seconds < 60:
@@ -106,6 +103,25 @@ def process_and_plot(csv_file):
     # Apply calibration and convert to inches
     df['Measurement'] = df.apply(lambda row: mm_to_inches(apply_calibration(row['Measurement'], row['Sensor Number'], calibration_map, active_sensors)), axis=1)
 
+    # Event detection: Sensor reads below 510mm (20.08 inches)
+    threshold_mm = 510
+    threshold_inches = mm_to_inches(threshold_mm)
+    
+    # Find the first time any sensor drops below the threshold
+    event_start_idx = df[df['Measurement'] < threshold_inches].index.min()
+    event_end_idx = df[df['Measurement'] < threshold_inches].index.max()
+
+    if pd.isna(event_start_idx) or pd.isna(event_end_idx):
+        print("No event found in the dataset.")
+        return None, None
+
+    # Add 1 second padding to start and end
+    event_start_time = df.loc[event_start_idx, 'Timestamp (PST)'] - pd.Timedelta(seconds=1)
+    event_end_time = df.loc[event_end_idx, 'Timestamp (PST)'] + pd.Timedelta(seconds=1)
+
+    # Trim the dataframe to the event duration
+    df = df[(df['Timestamp (PST)'] >= event_start_time) & (df['Timestamp (PST)'] <= event_end_time)]
+
     start_time = df['Timestamp (PST)'].min()
     end_time = df['Timestamp (PST)'].max()
 
@@ -130,22 +146,26 @@ def process_and_plot(csv_file):
     plt.yscale('log')
     plt.autoscale(enable=True, axis='y')
 
+    # Optional reference lines
     for y_value, color, label in [(2.5, '#E6DB74', '2.5 inches'), (5, '#AE81FF', '5 inches'), (10, '#66D9EF', '10 inches')]:
         plt.axhline(y=y_value, color=color, linestyle='--')
         plt.text(grouped['Timestamp (PST)'].iloc[-1], y_value, f'  {label}', verticalalignment='center', color=color)
 
-    min_per_interval = grouped.groupby('Timestamp (PST)')['Measurement'].idxmin()
-    for idx in min_per_interval:
-        row = grouped.loc[idx]
-        intnum = int(row["Measurement"])
-        fracnum = Fraction(row["Measurement"] - intnum)
-        Labeltxt = str(intnum) + " " + str(fracnum) + " in"
-        plt.text(row['Timestamp (PST)'], row['Measurement']-1, Labeltxt,
-                 color=plot.get_lines()[row['Sensor Number']].get_color(), fontsize=9)
+    # Find the lowest measurement for each sensor and label only that point
+    for sensor in grouped['Sensor Number'].unique():
+        sensor_data = grouped[grouped['Sensor Number'] == sensor]
+        min_row = sensor_data.loc[sensor_data['Measurement'].idxmin()]  # Get the row with the lowest value for the sensor
+        intnum = int(min_row["Measurement"])
+        fracnum = Fraction(min_row["Measurement"] - intnum)
+        label_text = f"{intnum} {fracnum} in"
+
+        # Add the label at the lowest point
+        plt.text(min_row['Timestamp (PST)'], min_row['Measurement'] - 0.5, label_text,
+                 color=plot.get_lines()[sensor].get_color(), fontsize=9, verticalalignment='top')
 
     base_filename = os.path.splitext(os.path.basename(csv_file))[0]
     output_dir = os.path.dirname(csv_file)
-    output_filename = os.path.join(output_dir, base_filename + '.png')
+    output_filename = os.path.join(output_dir, base_filename + '_trimmed.png')
     plt.savefig(output_filename)
 
     closest_readings = df.groupby('Sensor Number')['Measurement'].min()

@@ -17,6 +17,6 @@ if exist 310\* (
   pip install opencv-python
   pip install pandas matplotlib seaborn pyarrow pytz
   pip install pyserial PyYAML pillow
-  pip install customtkinter
+  pip install PyQt5
   echo Setup is finished
 )

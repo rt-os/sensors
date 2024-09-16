@@ -1,35 +1,37 @@
-import customtkinter
-from collections import deque
-import csv
-from datetime import datetime
-import time
-import threading
-import pytz
-import serial
+import sys
 import re
+import threading
+import time
+import csv
+import serial
+import yaml
+from collections import deque
+from datetime import datetime
+import pytz
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
+    QCheckBox, QPushButton, QTextEdit, QLabel, QLineEdit, QMessageBox, QRadioButton, QButtonGroup
+)
+from PyQt5.QtCore import QTimer, Qt, QObject, QEvent
 
 # Define parameters
-NUM_SENSORS = 6
+NUM_SENSORS = 4
 REPORT_INTERVAL = 1  # Report interval in seconds
 WINDOW_SIZE = 10 * REPORT_INTERVAL  # Window size in seconds
-WIDTH, HEIGHT = 1280, 720
 
 # Global variables
 LOGGING = False
-FILE_PREFIX = ""
-FILE_COMMENT = ""
-SEQUENCE = []
-
-# An array of NUM_SENSORS, each element is a deque of WINDOW_SIZE
 sensor_data = [deque([-1] * WINDOW_SIZE, maxlen=WINDOW_SIZE) for _ in range(NUM_SENSORS)]
 mindist = [999999 for _ in range(NUM_SENSORS)]
+pattern = re.compile(r'D(\d)\s*\(mm\):\s*(\d+)')
+building_code = ""
+SEQUENCE = []
+current_step = None
+current_step_index = 0
 
 # Capture multiple sensors per line
-pattern = re.compile(r'D(\d)\s*\(mm\):\s*(\d+)')
-
-from serial.tools import list_ports
-
 def find_arduino_port():
+    from serial.tools import list_ports
     ports = list(list_ports.comports())
     for port in ports:
         if "CH340" in port.description or "CP210x" in port.description or "USB" in port.description:
@@ -40,238 +42,39 @@ def mm_to_inches(lengths):
     mm_to_in = 0.0393701
     inches_lengths = []
     for length in lengths:
-        # Convert length from millimeters to inches and round to the nearest 1/8 inch
         converted_length = round(length * mm_to_in * 8) / 8
         inches_lengths.append(converted_length)
     return inches_lengths
-
-class sensorBar(customtkinter.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master)
-
-        self.display_in_inches = False  # Flag to track the display unit
-        self.sl0 = customtkinter.CTkLabel(self, text="0:", padx=5)
-        self.sv0 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl1 = customtkinter.CTkLabel(self, text="1:", padx=5)
-        self.sv1 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl2 = customtkinter.CTkLabel(self, text="2:", padx=5)
-        self.sv2 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl3 = customtkinter.CTkLabel(self, text="3:", padx=5)
-        self.sv3 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl4 = customtkinter.CTkLabel(self, text="4:", padx=5)
-        self.sv4 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-        self.sl5 = customtkinter.CTkLabel(self, text="5:", padx=5)
-        self.sv5 = customtkinter.CTkLabel(self, text="-1", width=70, fg_color="black", corner_radius=10)
-
-        self.sl0.grid(row=0, column=0, padx=2, pady=3, sticky="w")
-        self.sv0.grid(row=0, column=1, padx=2, pady=3, sticky="w")
-        self.sl1.grid(row=0, column=2, padx=2, pady=3, sticky="w")
-        self.sv1.grid(row=0, column=3, padx=2, pady=3, sticky="w")
-        self.sl2.grid(row=0, column=4, padx=2, pady=3, sticky="w")
-        self.sv2.grid(row=0, column=5, padx=2, pady=3, sticky="w")
-        self.sl3.grid(row=0, column=6, padx=2, pady=3, sticky="w")
-        self.sv3.grid(row=0, column=7, padx=2, pady=3, sticky="w")
-        self.sl4.grid(row=0, column=8, padx=2, pady=3, sticky="w")
-        self.sv4.grid(row=0, column=9, padx=2, pady=3, sticky="w")
-        self.sl5.grid(row=0, column=10, padx=2, pady=3, sticky="w")
-        self.sv5.grid(row=0, column=11, padx=2, pady=3, sticky="w")
-
-        # Bind click event to toggle conversion
-        self.sv0.bind("<Button-1>", self.toggle_conversion)
-        self.sv1.bind("<Button-1>", self.toggle_conversion)
-        self.sv2.bind("<Button-1>", self.toggle_conversion)
-        self.sv3.bind("<Button-1>", self.toggle_conversion)
-        self.sv4.bind("<Button-1>", self.toggle_conversion)
-        self.sv5.bind("<Button-1>", self.toggle_conversion)
-
-        self.timer_callback()
-
-    def toggle_conversion(self, event=None):
-        self.display_in_inches = not self.display_in_inches  # Toggle the flag
-        self.update_display()
-
-    def update_display(self):
-        global sensor_data
-
-        # Convert and update labels based on the current unit
-        if self.display_in_inches:
-            converted_data = mm_to_inches([sensor_data[i][0] for i in range(NUM_SENSORS)])
-            for i, label in enumerate([self.sv0, self.sv1, self.sv2, self.sv3, self.sv4, self.sv5]):
-                label.configure(text=f"{converted_data[i]:.2f} in")
-        else:
-            for i, label in enumerate([self.sv0, self.sv1, self.sv2, self.sv3, self.sv4, self.sv5]):
-                label.configure(text=f"{sensor_data[i][0]} mm")
-
-    def timer_callback(self):
-        self.update_display()  # Update display with current unit
-        self.after(1000, self.timer_callback)  # Call this method every second
-
-class SideFrame(customtkinter.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master)
-        self.master = master  # Store reference to the parent App instance
-
-        self.sitelbl = customtkinter.CTkLabel(self, text="Site:")
-        self.site = customtkinter.CTkEntry(self, placeholder_text="Site")
-        self.num_doors_lbl = customtkinter.CTkLabel(self, text="Number of Dock Doors:")
-        self.num_doors = customtkinter.CTkOptionMenu(self, values=["1", "2", "3"])
-        self.type_lbl = customtkinter.CTkLabel(self, text="Type:")
-        self.type = customtkinter.CTkOptionMenu(self, values=["MDF-DH", "DH"])
-        self.zone_lbl = customtkinter.CTkLabel(self, text="Zone:")
-        self.zone = customtkinter.CTkOptionMenu(self, values=["A", "B", "C", "D"])
-        self.set_sequence_btn = customtkinter.CTkButton(self, text="Set Sequence", command=self.set_sequence)
-        self.commentl = customtkinter.CTkLabel(self, text="Comment:")
-        self.comment = customtkinter.CTkEntry(self, placeholder_text="Comment")
-        self.start_stop_btn = customtkinter.CTkButton(self, text="Start/Stop", command=self.start_stop)
-
-        self.sitelbl.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.site.grid(row=1, column=0, padx=10, pady=(2, 0), sticky="w")
-        self.num_doors_lbl.grid(row=2, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.num_doors.grid(row=3, column=0, padx=10, pady=(2, 0), sticky="w")
-        self.type_lbl.grid(row=4, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.type.grid(row=5, column=0, padx=10, pady=(2, 0), sticky="w")
-        self.zone_lbl.grid(row=6, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.zone.grid(row=7, column=0, padx=10, pady=(2, 0), sticky="w")
-        self.set_sequence_btn.grid(row=8, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.commentl.grid(row=9, column=0, padx=10, pady=(10, 0), sticky="w")
-        self.comment.grid(row=10, column=0, padx=10, pady=(2, 0), sticky="w")
-        self.start_stop_btn.grid(row=11, column=0, padx=10, pady=(10, 0), sticky="w")
-
-
-    def set_sequence(self):
-        global SEQUENCE
-
-        doors = int(self.num_doors.get())
-        type_selected = self.type.get()
-        zone = self.zone.get()
-
-        SEQUENCE = []
-
-        # Adding doors in ascending order
-        for i in range(1, doors + 1):
-            SEQUENCE.append(f"Door {i}")
-
-        # Adding MDF-DH or DH with zone
-        if type_selected == "MDF-DH":
-            SEQUENCE.append(f"MDF-{zone}")
-            SEQUENCE.append(f"DH-{zone}")
-        else:
-            SEQUENCE.append(f"DH-{zone}")
-
-        # Reversing if Zone is A or D
-        if zone in ["A", "D"]:
-            if type_selected == "MDF-DH":
-                SEQUENCE.append(f"DH-{zone}-exit")
-                SEQUENCE.append(f"MDF-{zone}-exit")
-            else:
-                SEQUENCE.append(f"DH-{zone}-exit")
-
-        # Adding doors in descending order
-        for i in range(doors, 0, -1):
-            SEQUENCE.append(f"Door {i}")
-
-        # Update the output label with the sequence
-        self.master.outputlbl.configure(text=" -> ".join(SEQUENCE))
-        # Update the sequence display
-        self.master.update_sequence_display()
-
-    def start_stop(self):
-        global LOGGING, SEQUENCE, FILE_COMMENT, FILE_PREFIX
-
-        if not LOGGING:
-            if SEQUENCE:
-                # Pop the first element from the sequence
-                FILE_COMMENT = SEQUENCE.pop(0)
-                FILE_PREFIX = self.site.get().strip() + "_" + FILE_COMMENT
-                LOGGING = True
-                self.start_stop_btn.configure(text="Stop")
-            else:
-                self.master.outputlbl.configure(text="No sequence left to process.")  # Use self.master here
-        else:
-            LOGGING = False
-            self.start_stop_btn.configure(text="Start")
-            self.master.outputlbl.configure(text="Logging stopped. Remaining sequence: " + " -> ".join(SEQUENCE))
-        # Update the sequence display
-        self.master.update_sequence_display()
-
-
-class App(customtkinter.CTk):
-    def __init__(self):
-        super().__init__()
-
-        self.title("Sensor Logging System")
-        self.geometry(f"{WIDTH}x{HEIGHT}")
-
-        # Configure grid for the main window
-        self.grid_rowconfigure(0, weight=1)  # Expand outputlbl vertically
-        self.grid_rowconfigure(1, weight=0)  # No vertical expansion for sensorBar
-        self.grid_columnconfigure(0, weight=0)  # No horizontal expansion for side_frame
-        self.grid_columnconfigure(1, weight=0)  # No horizontal expansion for sequence_label
-        self.grid_columnconfigure(2, weight=1)  # Expand outputlbl horizontally
-
-        # Create SideFrame on the left
-        self.side_frame = SideFrame(self)
-        self.side_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=10, sticky="ns")
-
-        # Create sequence_label for the sequence in the middle
-        self.sequence_label = customtkinter.CTkLabel(self, text="Sequence", justify="left", fg_color="slategrey", corner_radius=10, anchor="w")
-        self.sequence_label.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
-
-        # Create outputlbl on the right, occupying all expandable space
-        self.outputlbl = customtkinter.CTkLabel(self, text="main", fg_color="dimgray", corner_radius=10)
-        self.outputlbl.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")  # Expand in all directions
-
-        # Create sensorBar below outputlbl
-        self.sensor_bar = sensorBar(self)
-        self.sensor_bar.grid(row=1, column=1, columnspan=2, padx=10, pady=10, sticky="ew")  # Expand horizontally
-
-    def update_sequence_display(self):
-        """Updates the sequence display with the current sequence steps."""
-        global SEQUENCE, FILE_COMMENT, LOGGING
-
-        # Prepare text for sequence_label
-        sequence_text = ""
-        for step in SEQUENCE:
-            if LOGGING and step == FILE_COMMENT:
-                # Highlight the current step if logging is active
-                sequence_text += f"**{step}**\n"
-            else:
-                sequence_text += f"{step}\n"
-
-        # Update the sequence label text
-        self.sequence_label.configure(text=sequence_text)
-
 
 def capture_data(sensor_id, value):
     sensor_data[sensor_id].append(value)
     mindist[sensor_id] = min(mindist[sensor_id], value)
 
-def gen_file_name(type):
-    global FILE_PREFIX
-    pst = datetime.now(pytz.timezone('America/Los_Angeles'))
-    fn = pst.strftime("%Y%m%d_%H%M%S")
-    return fn + FILE_PREFIX + ".csv"
-
-def serial_reader(ser):
-    global sensor_data, LOGGING, FILE_PREFIX
+def serial_reader(ser, main_window):
+    global sensor_data, LOGGING, current_step
     logging_running = False
     writer = None
     log_file = None
-    fn = ""
+
     while True:
-        if LOGGING:
+        if LOGGING and current_step:
             if not logging_running:
                 logging_running = True
-                fn = gen_file_name(0)
+                fn = main_window.gen_file_name(current_step)
                 log_file = open(fn, 'w', newline='')
                 writer = csv.writer(log_file)
                 writer.writerow(['Timestamp (PST)', 'Sensor Number', 'Measurement'])
+                print(f"Opened file: {fn}")
         else:
             if logging_running:
                 logging_running = False
                 if log_file:
                     log_file.close()
-                    fn = ""
+                    print(f"Closed file: {fn}")
+                if not SEQUENCE and current_step:
+                    current_step = None  # Ensure logging stops once sequence is exhausted
+                    print("No sequence set.")
+                    LOGGING = False
         try:
             line = ser.readline().decode('utf-8').strip()
             matches = re.findall(pattern, line)
@@ -282,17 +85,203 @@ def serial_reader(ser):
                 data_value = int(hit[1])
                 if 0 <= sensor_id < len(sensor_data):
                     capture_data(sensor_id, data_value)
-                    if logging_running:
+                    if logging_running and writer:
                         writer.writerow([timestamp, sensor_id, data_value])
         except UnicodeDecodeError:
             print("Error decoding byte sequence from serial port")
 
+class EventFilter(QObject):
+    """An event filter to capture spacebar key events globally"""
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Space:
+            obj.start_stop_logging()
+            return True
+        return super().eventFilter(obj, event)
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        # Load door_list from config.yaml
+        with open('config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+        self.checkbox_options = config.get('door_list', [])
+
+        self.setWindowTitle("Sensors")
+        self.setGeometry(100, 100, 800, 600)
+        self.display_in_inches = False
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        top_layout = QHBoxLayout()
+        bottom_panel = self.create_bottom_panel()
+        main_layout.addLayout(top_layout)
+        main_layout.addWidget(bottom_panel)
+        left_panel = self.create_left_panel()
+        self.text_output = self.create_text_output()
+        top_layout.addWidget(left_panel)
+        top_layout.addWidget(self.text_output, 1)
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_sensor_values)
+        self.timer.start(500)
+        self.event_filter = EventFilter()
+        self.installEventFilter(self.event_filter)
+
+    def create_left_panel(self):
+        """Creates the left panel with a building input, dynamic checkboxes, radio buttons, and a button"""
+        left_panel = QFrame(self)
+        left_panel.setFrameShape(QFrame.StyledPanel)
+        left_panel.setFixedWidth(200)
+        layout = QVBoxLayout(left_panel)
+        # Add building input field
+        self.building_input = QLineEdit(self)
+        self.building_input.setPlaceholderText("Building Code")
+        layout.addWidget(QLabel("Building"))
+        layout.addWidget(self.building_input)
+        # Add radio button group
+        radio_layout = QHBoxLayout()
+        self.radio_group = QButtonGroup(self)
+        radio_options = ["A", "B", "C", "D"]
+        for option in radio_options:
+            radio_button = QRadioButton(option, self)
+            self.radio_group.addButton(radio_button)
+            radio_layout.addWidget(radio_button)
+        # Select "A" by default
+        self.radio_group.buttons()[0].setChecked(True)
+        layout.addLayout(radio_layout)
+        # Define the dynamic door selector
+        self.checkboxes = []
+        for option in self.checkbox_options:
+            checkbox = QCheckBox(option, self)
+            layout.addWidget(checkbox)
+            self.checkboxes.append(checkbox)
+        # Set Sequence button
+        set_sequence_button = QPushButton("Set Sequence", self)
+        set_sequence_button.clicked.connect(self.set_sequence)
+        layout.addWidget(set_sequence_button)
+        layout.addStretch(1)
+        return left_panel
+
+    def create_text_output(self):
+        """Creates the central text output area"""
+        text_output = QTextEdit(self)
+        text_output.setReadOnly(True)
+        text_output.setText("")
+        return text_output
+
+    def create_bottom_panel(self):
+        """Creates the bottom panel that contains sensor readings and a Start/Stop button"""
+        bottom_panel = QFrame(self)
+        bottom_panel.setFrameShape(QFrame.StyledPanel)
+        layout = QVBoxLayout(bottom_panel)
+        # Create sensor value labels and text boxes
+        sensor_layout = QHBoxLayout()
+        self.sensor_labels = []
+        self.sensor_boxes = []
+        for i in range(NUM_SENSORS):
+            label = QLabel(f"{i}: ", self)
+            sensor_box = QLineEdit(self)
+            sensor_box.setReadOnly(True)
+            sensor_box.mousePressEvent = lambda event, index=i: self.toggle_units()  # Attach toggle behavior
+            self.sensor_labels.append(label)
+            self.sensor_boxes.append(sensor_box)
+            sensor_layout.addWidget(label)
+            sensor_layout.addWidget(sensor_box)
+        layout.addLayout(sensor_layout)
+        # Add Start/Stop button
+        self.start_stop_button = QPushButton("Start", self)
+        self.start_stop_button.clicked.connect(self.toggle_logging)
+        layout.addWidget(self.start_stop_button)
+        return bottom_panel
+
+    def update_sensor_values(self):
+        """Updates the sensor values in the text boxes"""
+        for i in range(NUM_SENSORS):
+            mm_value = sensor_data[i][0]
+            if self.display_in_inches:
+                inches_value = mm_to_inches([mm_value])[0]
+                self.sensor_boxes[i].setText(f"{inches_value:.2f} in")
+            else:
+                self.sensor_boxes[i].setText(f"{mm_value} mm")
+
+    def gen_file_name(self, step):
+        """Generates a file name based on the current sequence step, building code, and selected radio option."""
+        selected_radio = self.radio_group.checkedButton().text()  # Get the selected radio button value
+        pst = datetime.now(pytz.timezone('America/Los_Angeles'))
+        fn = pst.strftime("%Y%m%d_%H%M%S")
+        building_code = self.building_input.text()
+        return f"{fn}_{building_code}{selected_radio}_{step}.csv"
+
+    def toggle_units(self):
+        """Toggles the display between millimeters and inches"""
+        self.display_in_inches = not self.display_in_inches
+        self.update_sensor_values()  # Immediately update to reflect the toggled unit
+
+    def convert_to_inches(self, index):
+        """Converts the mm value to inches for the clicked sensor text box"""
+        mm_value = sensor_data[index][0]
+        inches_value = mm_to_inches([mm_value])[0]
+        self.sensor_boxes[index].setText(f"{inches_value:.2f} in")
+
+    def set_sequence(self):
+        """Collects the checked options and stores them in the SEQUENCE global variable"""
+        global SEQUENCE, current_step_index
+        SEQUENCE = []  # Clear the sequence
+        current_step_index = 0  # Reset to the first step
+        # Loop through the checkboxes and check if they are selected
+        for checkbox in self.checkboxes:
+            if checkbox.isChecked():
+                SEQUENCE.append(checkbox.text())
+        # Print the sequence in the text output area
+        if SEQUENCE:
+            sequence_text = " -> ".join(SEQUENCE)
+        else:
+            sequence_text = "No options selected."
+        
+        self.text_output.append(f"Sequence: {sequence_text}")
+
+    def start_stop_logging(self):
+        """Handles the start/stop logic for logging data"""
+        global LOGGING, SEQUENCE, current_step
+
+        if SEQUENCE or current_step:
+            if LOGGING:
+                LOGGING = False
+                self.text_output.append("Logging stopped and file closed.")
+                self.start_stop_button.setText("Start")
+                current_step = None
+            else:
+                if current_step is None and SEQUENCE:
+                    # Pop the first step from the sequence each time logging starts
+                    current_step = SEQUENCE.pop(0)
+                if current_step:
+                    LOGGING = True
+                    filename = self.gen_file_name(current_step)
+                    self.text_output.append(f"Logging started. Opened file: {filename}")
+                    self.start_stop_button.setText("Stop")
+                else:
+                    self.text_output.append("No sequence set.")
+                    LOGGING = False
+        else:
+            self.text_output.append("No sequence set.")
+
+    def toggle_logging(self):
+        """Toggles logging when the Start/Stop button is pressed"""
+        self.start_stop_logging()
+
 def main():
+    # Start the serial reader in a background thread
     ser = serial.Serial(find_arduino_port(), 115200)
-    serial_thread = threading.Thread(target=serial_reader, args=(ser,), daemon=True)
+    
+    # Create and run the Qt application
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    # Pass the MainWindow instance to the serial reader
+    serial_thread = threading.Thread(target=serial_reader, args=(ser, window), daemon=True)
     serial_thread.start()
-    app = App()
-    app.mainloop()
+    sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()

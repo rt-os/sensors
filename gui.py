@@ -215,10 +215,10 @@ class App(customtkinter.CTk):
 
         # Create sequence_label for the sequence in the middle
         self.sequence_label = customtkinter.CTkLabel(self, text="Sequence", justify="left", fg_color="slategrey", corner_radius=10, anchor="w")
-        self.sequence_label.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        self.sequence_label.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
 
         # Create outputlbl on the right, occupying all expandable space
-        self.outputlbl = customtkinter.CTkLabel(self, text="Sequence will be displayed here", fg_color="dimgray", corner_radius=10)
+        self.outputlbl = customtkinter.CTkLabel(self, text="main", fg_color="dimgray", corner_radius=10)
         self.outputlbl.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")  # Expand in all directions
 
         # Create sensorBar below outputlbl

@@ -10,7 +10,7 @@ from datetime import datetime
 import pytz
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QCheckBox, QPushButton, QTextEdit, QLabel, QLineEdit, QMessageBox, QRadioButton, QButtonGroup
+    QCheckBox, QPushButton, QTextEdit, QLabel, QLineEdit, QRadioButton, QButtonGroup
 )
 from PyQt5.QtCore import QTimer, Qt, QObject, QEvent
 
@@ -270,12 +270,117 @@ class MainWindow(QMainWindow):
         """Toggles logging when the Start/Stop button is pressed"""
         self.start_stop_logging()
 
+def apply_monokai_theme(app):
+    dark_stylesheet = """
+    QMainWindow {
+        background-color: #272822;
+        color: #F8F8F2;
+    }
+    
+    QWidget {
+        background-color: #272822;
+        color: #F8F8F2;
+    }
+    
+    QLineEdit, QTextEdit, QFrame {
+        background-color: #272822;
+        border: 1px solid #75715E;
+        border-radius: 5px;
+        color: #F8F8F2;
+        padding: 1px;
+    }
+
+    QLabel {
+        background-color: transparent;
+        border: none;
+        color: #F8F8F2;
+    }
+
+    QCheckBox {
+        background-color: #272822;
+        color: #F8F8F2;
+    }
+
+    QRadioButton {
+        background-color: #272822;
+        color: #F8F8F2;
+    }
+
+    QPushButton {
+        background-color: #66D9EF;
+        color: #272822;
+        border-radius: 12px;
+        padding: 5px;
+    }
+
+    QPushButton:pressed {
+        background-color: #A6E22E;
+    }
+
+    QLineEdit:focus, QTextEdit:focus {
+        border: 1px solid #A6E22E;
+    }
+    
+    QCheckBox::indicator {
+        background-color: #66D9EF;
+        border: 1px solid #75715E;
+    }
+
+    QCheckBox::indicator:checked {
+        background-color: #A6E22E;
+        border: 1px solid #A6E22E;
+    }
+
+    QCheckBox::indicator:unchecked {
+        background-color: #272822;
+        border: 1px solid #75715E;
+    }
+
+    QRadioButton::indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background-color: #66D9EF;
+        border: 1px solid #75715E;
+    }
+
+    QRadioButton::indicator:checked {
+        background-color: #A6E22E;
+        border: 1px solid #A6E22E;
+    }
+
+    QRadioButton::indicator:unchecked {
+        background-color: #272822;
+        border: 1px solid #75715E;
+    }
+
+    QScrollBar:vertical, QScrollBar:horizontal {
+        background-color: #3E3D32;
+        width: 10px;
+    }
+
+    QScrollBar::handle {
+        background-color: #66D9EF;
+    }
+
+    QScrollBar::add-line, QScrollBar::sub-line {
+        background-color: #272822;
+    }
+
+    QScrollBar::add-page, QScrollBar::sub-page {
+        background-color: #272822;
+    }
+    """
+    app.setStyleSheet(dark_stylesheet)
+
+
 def main():
     # Start the serial reader in a background thread
     ser = serial.Serial(find_arduino_port(), 115200)
     
     # Create and run the Qt application
     app = QApplication(sys.argv)
+    apply_monokai_theme(app)
     window = MainWindow()
     window.show()
     # Pass the MainWindow instance to the serial reader

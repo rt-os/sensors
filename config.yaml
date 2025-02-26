@@ -1,4 +1,7 @@
-buildingcode: "abc1"
+buildingcodes:
+  - "abc1"
+  - "abc2"
+  - "abc3"
 tugs:
   - "agv1"
   - "agv2"

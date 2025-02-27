@@ -8,11 +8,11 @@ import yaml
 from collections import deque
 from datetime import datetime
 import pytz
-
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
-    QCheckBox, QPushButton, QTextEdit, QLabel, QLineEdit, QRadioButton, 
-    QButtonGroup, QComboBox
+    QCheckBox, QPushButton, QTextEdit, QLabel, QLineEdit,
+    QRadioButton, QButtonGroup, QComboBox
 )
 from PyQt5.QtCore import QTimer, Qt, QObject, QEvent, QSettings
 
@@ -102,19 +102,35 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Create QSettings to remember combo selections
-        self.settings = QSettings("Bsoft", "sensors")  
+        # Create QSettings to remember user selections
+        self.settings = QSettings("MyCompany", "MyApp")  
 
         # Load config data
         with open('config.yaml', 'r') as f:
             config = yaml.safe_load(f)
         
-        self.building_codes = config.get('buildingcodes', [])  # was buildingcode
+        # For building, tugs, door_list
+        self.building_codes = config.get('buildingcodes', [])
         self.tugs_options = config.get('tugs', [])
         self.checkbox_options = config.get('door_list', [])
 
+        # -----------
+        # 1) Define possible filename formats
+        #    We map a "label" -> "actual format"
+        #    We'll keep building_code + selected_radio as BC
+        #    placeholders: {DATE}, {BC}, {TUG}, {STEP}
+        # -----------
+        self.filename_format_options = {
+            "Tug_Date_BC_Step":      "{TUG}_{DATE}_{BC}_{STEP}.csv",
+            "BC_Tug_Step":           "{BC}_{TUG}_{STEP}.csv",
+            "Date_BC_Tug_Step":      "{DATE}_{BC}_{TUG}_{STEP}.csv",
+            "Date_Tug_BC_Step":      "{DATE}_{TUG}_{BC}_{STEP}.csv",
+            "BC_Date_Tug_Step":      "{BC}_{DATE}_{TUG}_{STEP}.csv",
+            "Tug_BC_Date_Step":      "{TUG}_{BC}_{DATE}_{STEP}.csv",
+        }
+
         self.setWindowTitle("Sensors")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 600)
         self.display_in_inches = False
 
         central_widget = QWidget(self)
@@ -140,53 +156,62 @@ class MainWindow(QMainWindow):
         self.installEventFilter(self.event_filter)
 
     def create_left_panel(self):
-        """Creates the left panel with a building dropdown, second dropdown for tugs, 
-           a small radio group, the dynamic checkboxes, and a button."""
+        """Creates the left panel with building, radio group, tugs, 
+           checkboxes, filename format combo, and the 'Set Sequence' button."""
         left_panel = QFrame(self)
         left_panel.setFrameShape(QFrame.StyledPanel)
-        left_panel.setFixedWidth(220)
+        left_panel.setFixedWidth(250)
         layout = QVBoxLayout(left_panel)
 
-        # 1) Building ComboBox
+        # 1) Building Combo
         layout.addWidget(QLabel("Building"))
         self.building_combo = QComboBox(self)
         self.building_combo.addItems(self.building_codes)
-        # Restore last used index for building
         last_bld_idx = self.settings.value("buildingIndex", 0, type=int)
         if 0 <= last_bld_idx < self.building_combo.count():
             self.building_combo.setCurrentIndex(last_bld_idx)
         layout.addWidget(self.building_combo)
 
-        # 2) Radio button group (A, B, C, D) [unchanged if you want to keep it]
+        # 2) Radio button group (A,B,C,D) if you need them
         radio_layout = QHBoxLayout()
         self.radio_group = QButtonGroup(self)
         radio_options = ["A", "B", "C", "D"]
         for option in radio_options:
-            radio_button = QRadioButton(option, self)
-            self.radio_group.addButton(radio_button)
-            radio_layout.addWidget(radio_button)
-        # Select "A" by default
+            rb = QRadioButton(option, self)
+            self.radio_group.addButton(rb)
+            radio_layout.addWidget(rb)
         self.radio_group.buttons()[0].setChecked(True)
         layout.addLayout(radio_layout)
 
-        # 3) Tugs ComboBox
+        # 3) Tugs Combo
         layout.addWidget(QLabel("Tugs"))
         self.tugs_combo = QComboBox(self)
         self.tugs_combo.addItems(self.tugs_options)
-        # Restore last used index for tugs
         last_tugs_idx = self.settings.value("tugsIndex", 0, type=int)
         if 0 <= last_tugs_idx < self.tugs_combo.count():
             self.tugs_combo.setCurrentIndex(last_tugs_idx)
         layout.addWidget(self.tugs_combo)
 
-        # 4) Dynamic door checkboxes
+        # 4) Door checkboxes
         self.checkboxes = []
         for option in self.checkbox_options:
             checkbox = QCheckBox(option, self)
             layout.addWidget(checkbox)
             self.checkboxes.append(checkbox)
 
-        # 5) Set Sequence button
+        # 5) Filename Format Combo
+        layout.addWidget(QLabel("Filename Format"))
+        self.filename_format_combo = QComboBox(self)
+        # Add the "labels" to the combo
+        for label in self.filename_format_options.keys():
+            self.filename_format_combo.addItem(label)
+        # Restore last used format
+        last_fmt_idx = self.settings.value("filenameFormatIndex", 0, type=int)
+        if 0 <= last_fmt_idx < self.filename_format_combo.count():
+            self.filename_format_combo.setCurrentIndex(last_fmt_idx)
+        layout.addWidget(self.filename_format_combo)
+
+        # 6) Set Sequence button
         set_sequence_button = QPushButton("Set Sequence", self)
         set_sequence_button.clicked.connect(self.set_sequence)
         layout.addWidget(set_sequence_button)
@@ -240,17 +265,39 @@ class MainWindow(QMainWindow):
                 self.sensor_boxes[i].setText(f"{mm_value} mm")
 
     def gen_file_name(self, step):
-        """Generates a file name including building code, selected radio, step, and selected tug."""
-        # Get the user-selected building code from the combo box
+        """
+        Generates the file name based on:
+         - date string (DATE)
+         - BC = building_code + selected_radio
+         - TUG = selected_tug
+         - STEP = current_step
+        According to whichever pattern the user selected in filename_format_combo.
+        """
+        # 1) Gather all placeholders
+        pst = datetime.now(pytz.timezone('America/Los_Angeles'))
+        date_str = pst.strftime("%Y%m%d_%H%M%S")  # This is {DATE}
+        
         building_code = self.building_combo.currentText()
-        selected_radio = self.radio_group.checkedButton().text() if self.radio_group.checkedButton() else ""
+        radio = self.radio_group.checkedButton().text() if self.radio_group.checkedButton() else ""
+        bc_str = f"{building_code}{radio}"  # building_code + selected_radio together
         selected_tug = self.tugs_combo.currentText()
 
-        pst = datetime.now(pytz.timezone('America/Los_Angeles'))
-        fn = pst.strftime("%Y%m%d_%H%M%S")
+        # 2) Retrieve the pattern
+        #    We'll fetch by the label from the combobox
+        selected_pattern_label = self.filename_format_combo.currentText()
+        pattern_str = self.filename_format_options.get(selected_pattern_label, "")
+        if not pattern_str:
+            # Fallback if something is off
+            pattern_str = "{DATE}_{BC}_{TUG}_{STEP}.csv"
 
-        # Example: "20250101_123456_abc2A_Middle_agv2.csv"
-        return f"{fn}_{building_code}{selected_radio}_{step}_{selected_tug}.csv"
+        # 3) Format the string
+        filename = pattern_str.format(
+            DATE=date_str,
+            BC=bc_str,
+            TUG=selected_tug,
+            STEP=step
+        )
+        return filename
 
     def toggle_units(self):
         """Toggles the display between millimeters and inches"""
@@ -307,6 +354,7 @@ class MainWindow(QMainWindow):
         """
         self.settings.setValue("buildingIndex", self.building_combo.currentIndex())
         self.settings.setValue("tugsIndex", self.tugs_combo.currentIndex())
+        self.settings.setValue("filenameFormatIndex", self.filename_format_combo.currentIndex())
         super().closeEvent(event)
 
 def apply_monokai_theme(app):
@@ -423,6 +471,7 @@ def main():
     
     # Create and run the Qt application
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icon.png"))
     apply_monokai_theme(app)
     window = MainWindow()
     window.show()

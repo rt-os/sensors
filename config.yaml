@@ -1,7 +1,9 @@
 buildingcodes:
-  - "abc1"
-  - "abc2"
-  - "abc3"
+  - "BLD1"
+  - "BLD2"
+  - "BLD3"
+  - "BLD5"
+  - "BLD6"
 tugs:
   - "agv1"
   - "agv2"

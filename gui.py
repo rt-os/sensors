@@ -103,7 +103,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         
         # Create QSettings to remember user selections
-        self.settings = QSettings("MyCompany", "MyApp")  
+        self.settings = QSettings("Bsoft", "sensors")
 
         # Load config data
         with open('config.yaml', 'r') as f:
